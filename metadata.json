@@ -1,0 +1,11 @@
+{
+  "name": "Vivvyo Editor",
+  "description": "Vivvyo Editor - All-in-one mobile and tablet video studio featuring trending TikTok templates, 50 viral songs, AI background remover, custom crop, rich font generator, and multi-format export.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
