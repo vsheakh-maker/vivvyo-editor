@@ -187,6 +187,36 @@ export const FILTER_PRESETS: FilterPreset[] = [
     cssFilter: 'contrast(1.4) saturate(1.6) hue-rotate(90deg)',
     badgeColor: 'bg-red-500',
   },
+  {
+    id: 'matrix',
+    name: 'Matrix Code',
+    cssFilter: 'hue-rotate(95deg) saturate(2.5) contrast(1.3) brightness(0.9)',
+    badgeColor: 'bg-emerald-500',
+  },
+  {
+    id: 'dreamy',
+    name: 'Dreamy Bloom',
+    cssFilter: 'brightness(1.15) contrast(0.92) saturate(1.35) blur(0.3px)',
+    badgeColor: 'bg-pink-400',
+  },
+  {
+    id: 'kodak-gold',
+    name: 'Kodak Portra',
+    cssFilter: 'sepia(0.3) saturate(1.25) contrast(1.08) brightness(1.04)',
+    badgeColor: 'bg-amber-500',
+  },
+  {
+    id: 'emerald',
+    name: 'Emerald Forest',
+    cssFilter: 'hue-rotate(50deg) saturate(1.4) contrast(1.15) brightness(0.95)',
+    badgeColor: 'bg-teal-600',
+  },
+  {
+    id: 'monochrome-high',
+    name: 'Oppenheimer B&W',
+    cssFilter: 'grayscale(1) contrast(1.7) brightness(1.05)',
+    badgeColor: 'bg-zinc-900 border border-zinc-500',
+  },
 ];
 
 export const FILTERS = FILTER_PRESETS;

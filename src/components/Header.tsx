@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, Film, Camera, FolderCheck, Plus, Sparkles, Layers } from 'lucide-react';
+import { ArrowLeft, Film, Camera, FolderCheck, Plus, Sparkles, Undo2, Redo2 } from 'lucide-react';
 import { ToolType } from '../types.ts';
 
 interface HeaderProps {
@@ -12,6 +12,12 @@ interface HeaderProps {
   onTriggerExport: () => void;
   savedCount: number;
   currentVideoTitle: string;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  undoCount?: number;
+  redoCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +30,12 @@ export const Header: React.FC<HeaderProps> = ({
   onTriggerExport,
   savedCount,
   currentVideoTitle,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  undoCount = 0,
+  redoCount = 0,
 }) => {
   return (
     <header className="h-14 bg-zinc-900/95 border-b border-zinc-800/80 px-3.5 flex items-center justify-between shrink-0 z-30 backdrop-blur-md">
@@ -77,6 +89,30 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right: Actions */}
       <div className="flex items-center space-x-1 sm:space-x-1.5">
+        {/* Undo / Redo controls */}
+        {onUndo && (
+          <div className="flex items-center bg-zinc-800/80 rounded-lg p-0.5 border border-zinc-700/60 mr-1">
+            <button
+              id="btn-header-undo"
+              onClick={onUndo}
+              disabled={!canUndo}
+              className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Undo (Ctrl+Z / Cmd+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              id="btn-header-redo"
+              onClick={onRedo}
+              disabled={!canRedo}
+              className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-700 rounded disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Redo (Ctrl+Y / Cmd+Shift+Z)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Templates Quick Button */}
         {onOpenTemplates && (
           <button

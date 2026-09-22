@@ -8,7 +8,9 @@ import {
   VideoAsset,
   CustomCropSettings,
   FontGeneratorSettings,
+  CanvasBackgroundType,
 } from '../types.ts';
+import { computeFilteredCss } from '../utils/filterUtils.ts';
 
 interface VideoPlayerPreviewProps {
   video: VideoAsset;
@@ -19,6 +21,7 @@ interface VideoPlayerPreviewProps {
   onTogglePlay: () => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   filterCss: string;
+  filterIntensity?: number;
   transform: TransformSettings;
   watermark: WatermarkSettings;
   fontGenerator?: FontGeneratorSettings;
@@ -26,6 +29,7 @@ interface VideoPlayerPreviewProps {
   audio: AudioSettings;
   aspectRatio: AspectRatioType;
   customCrop?: CustomCropSettings;
+  canvasBackground?: CanvasBackgroundType;
   speed: number;
   trimRange?: [number, number];
   onVideoError?: () => void;
@@ -40,6 +44,7 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   onTogglePlay,
   videoRef,
   filterCss,
+  filterIntensity = 100,
   transform,
   watermark,
   fontGenerator,
@@ -47,6 +52,7 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   audio,
   aspectRatio,
   customCrop,
+  canvasBackground = 'black',
   speed,
   trimRange,
   onVideoError,
@@ -102,9 +108,10 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   };
 
   // Compute transform styles
+  const activeComputedFilter = computeFilteredCss(filterCss, filterIntensity);
   const transformStyle: React.CSSProperties = {
     transform: `rotate(${transform.rotation}deg) scaleX(${transform.flipHorizontal ? -1 : 1}) scaleY(${transform.flipVertical ? -1 : 1})`,
-    filter: filterCss !== 'none' ? filterCss : undefined,
+    filter: activeComputedFilter !== 'none' ? activeComputedFilter : undefined,
     transition: 'transform 0.2s ease, filter 0.2s ease',
   };
 
@@ -179,6 +186,27 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
       className="relative w-full bg-black flex flex-col items-center justify-center overflow-hidden shrink-0 select-none group"
       style={{ height: '36vh', minHeight: '220px', maxHeight: '340px' }}
     >
+      {/* Background Ambience / Canvas Background Option */}
+      {canvasBackground === 'blur' && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40 blur-2xl scale-125 select-none">
+          <video
+            src={video.url}
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+      {canvasBackground === 'gradient-indigo' && (
+        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-950 via-slate-900 to-purple-950 pointer-events-none opacity-90" />
+      )}
+      {canvasBackground === 'gradient-sunset' && (
+        <div className="absolute inset-0 bg-gradient-to-tr from-rose-950 via-amber-950 to-purple-950 pointer-events-none opacity-90" />
+      )}
+      {canvasBackground === 'grid' && (
+        <div className="absolute inset-0 bg-[radial-gradient(#374151_1px,transparent_1px)] [background-size:16px_16px] opacity-40 pointer-events-none" />
+      )}
+
       {/* Video Framing & Aspect Ratio Container */}
       <div className="relative flex items-center justify-center w-full h-full overflow-hidden p-2">
         <div

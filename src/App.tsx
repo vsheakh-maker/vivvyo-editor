@@ -26,6 +26,7 @@ import { VideoPickerModal } from './components/VideoPickerModal.tsx';
 import { TemplateModal } from './components/TemplateModal.tsx';
 import { BgRemoverModal } from './components/BgRemoverModal.tsx';
 import { FontGeneratorModal } from './components/FontGeneratorModal.tsx';
+import { StudioFooter } from './components/StudioFooter.tsx';
 
 import {
   ToolType,
@@ -43,6 +44,8 @@ import {
   ExportConfig,
   VideoTemplate,
   TikTokSong,
+  CanvasBackgroundType,
+  EditorStateSnapshot,
 } from './types.ts';
 import { SAMPLE_VIDEOS, FILTERS } from './data/sampleMedia.ts';
 import { exportEditedVideo, ExportResult } from './utils/videoProcessor.ts';
@@ -70,6 +73,8 @@ export default function App() {
   });
   const [filterType, setFilterType] = useState<FilterType>('none');
   const [filterCss, setFilterCss] = useState('none');
+  const [filterIntensity, setFilterIntensity] = useState<number>(100);
+  const [canvasBackground, setCanvasBackground] = useState<CanvasBackgroundType>('black');
   const [transform, setTransform] = useState<TransformSettings>({
     rotation: 0,
     flipHorizontal: false,
@@ -114,6 +119,10 @@ export default function App() {
   // Background remover cutout sticker
   const [bgStickerUrl, setBgStickerUrl] = useState<string | null>(null);
 
+  // Undo / Redo History Stacks
+  const [undoStack, setUndoStack] = useState<EditorStateSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<EditorStateSnapshot[]>([]);
+
   // Notification Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -123,6 +132,144 @@ export default function App() {
       setToastMessage(null);
     }, 3200);
   };
+
+  // Helper to record a state snapshot before mutation
+  const takeSnapshot = (label: string) => {
+    const snap: EditorStateSnapshot = {
+      activeFilter: filterType,
+      filterIntensity,
+      transform: { ...transform },
+      audioSettings: { ...audioSettings },
+      aspectRatio,
+      customCrop: { ...customCrop },
+      speed,
+      trimRange: [...trimRange] as [number, number],
+      watermark: { ...watermark },
+      fontGenerator: { ...fontGenerator },
+      bgStickerUrl,
+      canvasBackground,
+      label,
+      timestamp: Date.now(),
+    };
+
+    setUndoStack((prev) => {
+      if (prev.length > 0) {
+        const last = prev[prev.length - 1];
+        if (Date.now() - last.timestamp < 350 && last.label === label) {
+          return prev;
+        }
+      }
+      return [...prev.slice(-35), snap];
+    });
+    setRedoStack([]);
+  };
+
+  // Restore snapshot helper
+  const applySnapshot = (snap: EditorStateSnapshot) => {
+    setFilterType(snap.activeFilter);
+    const filterObj = FILTERS.find((f: FilterPreset) => f.id === snap.activeFilter);
+    setFilterCss(filterObj ? filterObj.cssFilter : 'none');
+    setFilterIntensity(snap.filterIntensity ?? 100);
+    setTransform(snap.transform);
+    setAudioSettings(snap.audioSettings);
+    setAspectRatio(snap.aspectRatio);
+    setCustomCrop(snap.customCrop);
+    setSpeed(snap.speed);
+    setTrimRange(snap.trimRange);
+    setWatermark(snap.watermark);
+    setFontGenerator(snap.fontGenerator);
+    setBgStickerUrl(snap.bgStickerUrl);
+    setCanvasBackground(snap.canvasBackground ?? 'black');
+  };
+
+  // Undo action
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+
+    const currentSnapshot: EditorStateSnapshot = {
+      activeFilter: filterType,
+      filterIntensity,
+      transform: { ...transform },
+      audioSettings: { ...audioSettings },
+      aspectRatio,
+      customCrop: { ...customCrop },
+      speed,
+      trimRange: [...trimRange] as [number, number],
+      watermark: { ...watermark },
+      fontGenerator: { ...fontGenerator },
+      bgStickerUrl,
+      canvasBackground,
+      label: 'Current Edit',
+      timestamp: Date.now(),
+    };
+
+    const previousSnapshot = undoStack[undoStack.length - 1];
+    const newUndoStack = undoStack.slice(0, -1);
+
+    setRedoStack((prev) => [...prev, currentSnapshot]);
+    setUndoStack(newUndoStack);
+
+    applySnapshot(previousSnapshot);
+    showToast(`Undid: ${previousSnapshot.label}`);
+  };
+
+  // Redo action
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+
+    const currentSnapshot: EditorStateSnapshot = {
+      activeFilter: filterType,
+      filterIntensity,
+      transform: { ...transform },
+      audioSettings: { ...audioSettings },
+      aspectRatio,
+      customCrop: { ...customCrop },
+      speed,
+      trimRange: [...trimRange] as [number, number],
+      watermark: { ...watermark },
+      fontGenerator: { ...fontGenerator },
+      bgStickerUrl,
+      canvasBackground,
+      label: 'Current Edit',
+      timestamp: Date.now(),
+    };
+
+    const nextSnapshot = redoStack[redoStack.length - 1];
+    const newRedoStack = redoStack.slice(0, -1);
+
+    setUndoStack((prev) => [...prev, currentSnapshot]);
+    setRedoStack(newRedoStack);
+
+    applySnapshot(nextSnapshot);
+    showToast(`Redid: ${nextSnapshot.label}`);
+  };
+
+  // Keyboard shortcut listener for Ctrl+Z / Cmd+Z and Ctrl+Y / Cmd+Shift+Z
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || target?.isContentEditable) {
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undoStack, redoStack, filterType, filterIntensity, transform, audioSettings, aspectRatio, customCrop, speed, trimRange, watermark, fontGenerator, bgStickerUrl, canvasBackground]);
 
   // Modals state
   const [savedItems, setSavedItems] = useState<ExportedItem[]>(() => {
@@ -280,6 +427,8 @@ export default function App() {
         aspectRatio,
         customCrop,
         filterCss,
+        filterIntensity,
+        canvasBackground,
         transform,
         watermark,
         fontGenerator,
@@ -396,6 +545,7 @@ export default function App() {
 
   // Template apply handler
   const handleApplyTemplate = (template: VideoTemplate, song?: TikTokSong) => {
+    takeSnapshot(`Template: ${template.title}`);
     setAspectRatio(template.aspectRatio);
     setFilterType(template.filterId);
 
@@ -424,6 +574,7 @@ export default function App() {
 
   // TikTok song select handler from TemplateModal
   const handleSelectTikTokSong = (song: TikTokSong) => {
+    takeSnapshot(`Audio: ${song.title}`);
     setAudioSettings((prev) => ({
       ...prev,
       bgmTrackId: song.id,
@@ -445,6 +596,12 @@ export default function App() {
         onTriggerExport={() => handleOpenExportDialog('Video Project')}
         savedCount={savedItems.length}
         currentVideoTitle={currentVideo.title}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        undoCount={undoStack.length}
+        redoCount={redoStack.length}
       />
 
       {/* Floating Toast Notification */}
@@ -465,6 +622,7 @@ export default function App() {
         onTogglePlay={handleTogglePlay}
         videoRef={videoRef}
         filterCss={filterCss}
+        filterIntensity={filterIntensity}
         transform={transform}
         watermark={watermark}
         fontGenerator={fontGenerator}
@@ -472,6 +630,7 @@ export default function App() {
         audio={audioSettings}
         aspectRatio={aspectRatio}
         customCrop={customCrop}
+        canvasBackground={canvasBackground}
         speed={speed}
         trimRange={activeTool === 'trim' ? trimRange : undefined}
         onVideoError={handleVideoError}
@@ -492,7 +651,10 @@ export default function App() {
             <TrimTool
               duration={duration}
               trimRange={trimRange}
-              onTrimChange={(range) => setTrimRange(range)}
+              onTrimChange={(range) => {
+                takeSnapshot('Trim Range');
+                setTrimRange(range);
+              }}
               onPreviewTrim={() => {
                 if (videoRef.current) {
                   videoRef.current.currentTime = trimRange[0];
@@ -500,7 +662,10 @@ export default function App() {
                 }
               }}
               onApplyTrim={() => handleOpenExportDialog('Trim Clip')}
-              onReset={() => setTrimRange([0, duration])}
+              onReset={() => {
+                takeSnapshot('Reset Trim');
+                setTrimRange([0, duration]);
+              }}
             />
           </div>
         )}
@@ -510,11 +675,24 @@ export default function App() {
             <CropTool
               currentRatio={aspectRatio}
               customCrop={customCrop}
-              onSelectRatio={(r) => setAspectRatio(r)}
-              onUpdateCustomCrop={(c) => setCustomCrop(c)}
+              canvasBackground={canvasBackground}
+              onSelectRatio={(r) => {
+                takeSnapshot('Aspect Ratio');
+                setAspectRatio(r);
+              }}
+              onSelectCanvasBackground={(bg) => {
+                takeSnapshot('Canvas Backdrop');
+                setCanvasBackground(bg);
+              }}
+              onUpdateCustomCrop={(c) => {
+                takeSnapshot('Custom Crop');
+                setCustomCrop(c);
+              }}
               onApplyCrop={() => handleOpenExportDialog('Crop Ratio')}
               onReset={() => {
+                takeSnapshot('Reset Crop');
                 setAspectRatio('original');
+                setCanvasBackground('black');
                 setCustomCrop({ widthRatio: 16, heightRatio: 9, freeform: false });
               }}
             />
@@ -525,14 +703,21 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-end">
             <FilterTool
               currentFilter={filterType}
+              intensity={filterIntensity}
               onSelectFilter={(id, css) => {
+                takeSnapshot('Filter: ' + id);
                 setFilterType(id);
                 setFilterCss(css);
               }}
+              onIntensityChange={(val) => {
+                setFilterIntensity(val);
+              }}
               onApplyFilter={() => handleOpenExportDialog('Color Filter')}
               onReset={() => {
+                takeSnapshot('Reset Filter');
                 setFilterType('none');
                 setFilterCss('none');
+                setFilterIntensity(100);
               }}
             />
           </div>
@@ -542,16 +727,20 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-end">
             <AudioMixerTool
               audioSettings={audioSettings}
-              onChangeAudio={(s) => setAudioSettings(s)}
+              onChangeAudio={(s) => {
+                takeSnapshot('Audio Mixer');
+                setAudioSettings(s);
+              }}
               onApplyAudio={() => handleOpenExportDialog('Audio Mixer')}
-              onReset={() =>
+              onReset={() => {
+                takeSnapshot('Reset Audio');
                 setAudioSettings({
                   muted: false,
                   videoVolume: 1,
                   bgmTrackId: null,
                   bgmVolume: 0.6,
-                })
-              }
+                });
+              }}
             />
           </div>
         )}
@@ -561,9 +750,15 @@ export default function App() {
             <SpeedTool
               currentSpeed={speed}
               originalDuration={duration}
-              onSelectSpeed={(s) => setSpeed(s)}
+              onSelectSpeed={(s) => {
+                takeSnapshot(`Speed: ${s}x`);
+                setSpeed(s);
+              }}
               onApplySpeed={() => handleOpenExportDialog('Speed Edit')}
-              onReset={() => setSpeed(1)}
+              onReset={() => {
+                takeSnapshot('Reset Speed');
+                setSpeed(1);
+              }}
             />
           </div>
         )}
@@ -572,15 +767,19 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-end">
             <TransformTool
               transform={transform}
-              onChangeTransform={(t) => setTransform(t)}
+              onChangeTransform={(t) => {
+                takeSnapshot('Transform');
+                setTransform(t);
+              }}
               onApplyTransform={() => handleOpenExportDialog('Rotate & Mirror')}
-              onReset={() =>
+              onReset={() => {
+                takeSnapshot('Reset Transform');
                 setTransform({
                   rotation: 0,
                   flipHorizontal: false,
                   flipVertical: false,
-                })
-              }
+                });
+              }}
             />
           </div>
         )}
@@ -612,9 +811,13 @@ export default function App() {
           <div className="flex-1 flex flex-col justify-end">
             <WatermarkTool
               watermark={watermark}
-              onChangeWatermark={(w) => setWatermark(w)}
+              onChangeWatermark={(w) => {
+                takeSnapshot('Watermark');
+                setWatermark(w);
+              }}
               onApplyWatermark={() => handleOpenExportDialog('Watermark Video')}
-              onReset={() =>
+              onReset={() => {
+                takeSnapshot('Reset Watermark');
                 setWatermark({
                   text: '',
                   position: 'bottom-right',
@@ -622,8 +825,8 @@ export default function App() {
                   opacity: 0.85,
                   fontSize: 24,
                   hasBackground: true,
-                })
-              }
+                });
+              }}
             />
           </div>
         )}
@@ -643,6 +846,17 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {/* Footer Branding with Vivvyo Copyright & Browser Link */}
+      <StudioFooter
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        undoCount={undoStack.length}
+        redoCount={redoStack.length}
+        lastAction={undoStack.length > 0 ? undoStack[undoStack.length - 1].label : undefined}
+      />
 
       {/* Global Modals & Sheets */}
       <ExportProgressModal
@@ -671,6 +885,7 @@ export default function App() {
         isOpen={isBgRemoverOpen}
         onClose={() => setIsBgRemoverOpen(false)}
         onApplyAsSticker={(stickerUrl: string) => {
+          takeSnapshot('Cutout Sticker');
           setBgStickerUrl(stickerUrl);
           showToast('Cutout sticker placed on video!');
         }}
@@ -681,6 +896,7 @@ export default function App() {
         onClose={() => setIsFontGeneratorOpen(false)}
         currentSettings={fontGenerator}
         onApply={(newSettings) => {
+          takeSnapshot('Text Overlay');
           setFontGenerator(newSettings);
           showToast('Text overlay updated!');
         }}

@@ -5,19 +5,21 @@ import { FILTER_PRESETS } from '../../data/sampleMedia.ts';
 
 interface FilterToolProps {
   currentFilter: FilterType;
+  intensity?: number;
   onSelectFilter: (filterId: FilterType, cssFilter: string) => void;
+  onIntensityChange?: (intensity: number) => void;
   onApplyFilter: () => void;
   onReset: () => void;
 }
 
 export const FilterTool: React.FC<FilterToolProps> = ({
   currentFilter,
+  intensity = 100,
   onSelectFilter,
+  onIntensityChange,
   onApplyFilter,
   onReset,
 }) => {
-  const [intensity, setIntensity] = useState(100);
-
   const handleSelect = (preset: typeof FILTER_PRESETS[0]) => {
     onSelectFilter(preset.id, preset.cssFilter);
   };
@@ -73,7 +75,12 @@ export const FilterTool: React.FC<FilterToolProps> = ({
             min={10}
             max={100}
             value={intensity}
-            onChange={(e) => setIntensity(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (onIntensityChange) {
+                onIntensityChange(val);
+              }
+            }}
             className="flex-1 h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer accent-pink-500"
           />
           <span className="text-[11px] font-mono text-pink-400 w-8 text-right">{intensity}%</span>

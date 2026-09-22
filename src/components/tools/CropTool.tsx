@@ -11,13 +11,15 @@ import {
   Maximize2,
   Film,
 } from 'lucide-react';
-import { AspectRatioType, CustomCropSettings } from '../../types.ts';
+import { AspectRatioType, CustomCropSettings, CanvasBackgroundType } from '../../types.ts';
 import { ASPECT_RATIOS } from '../../data/sampleMedia.ts';
 
 interface CropToolProps {
   currentRatio: AspectRatioType;
   customCrop: CustomCropSettings;
+  canvasBackground?: CanvasBackgroundType;
   onSelectRatio: (ratio: AspectRatioType) => void;
+  onSelectCanvasBackground?: (bg: CanvasBackgroundType) => void;
   onUpdateCustomCrop: (settings: CustomCropSettings) => void;
   onApplyCrop: () => void;
   onReset: () => void;
@@ -26,7 +28,9 @@ interface CropToolProps {
 export const CropTool: React.FC<CropToolProps> = ({
   currentRatio,
   customCrop,
+  canvasBackground = 'black',
   onSelectRatio,
+  onSelectCanvasBackground,
   onUpdateCustomCrop,
   onApplyCrop,
   onReset,
@@ -171,6 +175,40 @@ export const CropTool: React.FC<CropToolProps> = ({
                 className="w-full accent-indigo-500"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Canvas Backdrop Ambience Style (Letterbox/Fill) */}
+      {onSelectCanvasBackground && (
+        <div className="space-y-1.5 pt-1 border-t border-zinc-800/80">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+            <span className="font-semibold text-zinc-300">Canvas Backdrop Ambience:</span>
+            <span className="capitalize font-mono text-indigo-400 text-[10px]">
+              {canvasBackground.replace('-', ' ')}
+            </span>
+          </div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {[
+              { id: 'black', label: 'Black', style: 'bg-black border-zinc-700' },
+              { id: 'blur', label: 'Video Blur', style: 'bg-indigo-950/60 border-indigo-500/50' },
+              { id: 'gradient-indigo', label: 'Neon Blue', style: 'bg-gradient-to-r from-blue-900 to-indigo-900 border-indigo-400/40' },
+              { id: 'gradient-sunset', label: 'Sunset', style: 'bg-gradient-to-r from-rose-900 to-amber-900 border-rose-400/40' },
+              { id: 'grid', label: 'Studio Grid', style: 'bg-zinc-950 border-zinc-700' },
+            ].map((bgOption) => (
+              <button
+                key={bgOption.id}
+                type="button"
+                onClick={() => onSelectCanvasBackground(bgOption.id as CanvasBackgroundType)}
+                className={`py-1 px-1.5 rounded-lg border text-[10px] font-medium truncate text-center transition-all ${
+                  canvasBackground === bgOption.id
+                    ? 'ring-2 ring-indigo-500 border-indigo-400 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                } ${bgOption.style}`}
+              >
+                {bgOption.label}
+              </button>
+            ))}
           </div>
         </div>
       )}

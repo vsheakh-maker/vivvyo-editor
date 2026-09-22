@@ -28,7 +28,12 @@ export type FilterType =
   | 'golden'
   | 'neon-pink'
   | 'pastel'
-  | 'vhs-glitch';
+  | 'vhs-glitch'
+  | 'matrix'
+  | 'dreamy'
+  | 'kodak-gold'
+  | 'emerald'
+  | 'monochrome-high';
 
 export interface FilterPreset {
   id: FilterType;
@@ -121,7 +126,7 @@ export interface TikTokSong {
   id: string;
   title: string;
   artist: string;
-  category: 'viral' | 'phonk' | 'lofi' | 'speedup' | 'cinematic' | 'dance';
+  category: 'viral' | 'phonk' | 'lofi' | 'speedup' | 'cinematic' | 'dance' | 'aesthetic';
   duration: number;
   bpm: number;
   coverUrl: string;
@@ -193,3 +198,22 @@ export interface SlideshowImage {
 
 export type DeviceMode = 'phone' | 'tablet' | 'responsive';
 export type DeviceOrientation = 'portrait' | 'landscape';
+
+export type CanvasBackgroundType = 'black' | 'blur' | 'gradient-indigo' | 'gradient-sunset' | 'grid' | 'white';
+
+export interface EditorStateSnapshot {
+  activeFilter: FilterType;
+  filterIntensity: number;
+  transform: TransformSettings;
+  audioSettings: AudioSettings;
+  aspectRatio: AspectRatioType;
+  customCrop: CustomCropSettings;
+  speed: number;
+  trimRange: [number, number];
+  watermark: WatermarkSettings;
+  fontGenerator: FontGeneratorSettings;
+  bgStickerUrl: string | null;
+  canvasBackground: CanvasBackgroundType;
+  label: string;
+  timestamp: number;
+}

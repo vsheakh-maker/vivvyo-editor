@@ -8,8 +8,10 @@ import {
   FontGeneratorSettings,
   OutputFormat,
   BgRemoverSettings,
+  CanvasBackgroundType,
 } from '../types.ts';
 import { getAudioContext, playSynthTrack, audioBufferToWavBlob, SynthPlaybackHandle } from './audioSynth.ts';
+import { computeFilteredCss } from './filterUtils.ts';
 
 export interface ExportVideoOptions {
   videoElement: HTMLVideoElement;
@@ -19,6 +21,8 @@ export interface ExportVideoOptions {
   aspectRatio: AspectRatioType;
   customCrop?: CustomCropSettings;
   filterCss: string;
+  filterIntensity?: number;
+  canvasBackground?: CanvasBackgroundType;
   transform: TransformSettings;
   watermark: WatermarkSettings;
   fontGenerator?: FontGeneratorSettings;
@@ -52,6 +56,8 @@ export async function exportEditedVideo(options: ExportVideoOptions): Promise<Ex
     aspectRatio,
     customCrop,
     filterCss,
+    filterIntensity = 100,
+    canvasBackground = 'black',
     transform,
     watermark,
     fontGenerator,
@@ -243,15 +249,58 @@ export async function exportEditedVideo(options: ExportVideoOptions): Promise<Ex
           return;
         }
 
-        // Draw background
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, targetWidth, targetHeight);
+        // Draw backdrop ambience according to canvasBackground
+        if (canvasBackground === 'blur') {
+          ctx.save();
+          ctx.filter = 'blur(20px) opacity(0.55)';
+          ctx.drawImage(videoElement, -targetWidth * 0.1, -targetHeight * 0.1, targetWidth * 1.2, targetHeight * 1.2);
+          ctx.restore();
+        } else if (canvasBackground === 'gradient-indigo') {
+          const grad = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+          grad.addColorStop(0, '#1e1b4b');
+          grad.addColorStop(0.5, '#0f172a');
+          grad.addColorStop(1, '#3b0764');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+        } else if (canvasBackground === 'gradient-sunset') {
+          const grad = ctx.createLinearGradient(0, 0, targetWidth, targetHeight);
+          grad.addColorStop(0, '#4c0519');
+          grad.addColorStop(0.5, '#451a03');
+          grad.addColorStop(1, '#3b0764');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+        } else if (canvasBackground === 'grid') {
+          ctx.fillStyle = '#0a0a0f';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.lineWidth = 1;
+          const gridSize = 24;
+          for (let x = 0; x < targetWidth; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, targetHeight);
+            ctx.stroke();
+          }
+          for (let y = 0; y < targetHeight; y += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(targetWidth, y);
+            ctx.stroke();
+          }
+        } else if (canvasBackground === 'white') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+        } else {
+          ctx.fillStyle = '#000000';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+        }
 
         // Save context state for transforms
         ctx.save();
 
-        // Apply CSS filter
-        ctx.filter = filterCss !== 'none' ? filterCss : 'none';
+        // Apply CSS filter scaled with intensity
+        const appliedFilter = computeFilteredCss(filterCss, filterIntensity);
+        ctx.filter = appliedFilter !== 'none' ? appliedFilter : 'none';
 
         // Move to center of canvas for rotation & flipping
         ctx.translate(targetWidth / 2, targetHeight / 2);
