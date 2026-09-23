@@ -1,14 +1,18 @@
 export type ToolType =
   | 'trim'
+  | 'auto-cut'
   | 'crop'
   | 'filter'
   | 'audio'
   | 'speed'
   | 'transform'
+  | 'transition'
+  | 'joiner'
+  | 'subtitles'
+  | 'stickers'
   | 'compress'
   | 'extract-audio'
   | 'watermark'
-  | 'joiner'
   | 'slideshow'
   | 'templates'
   | 'bg-remove'
@@ -201,6 +205,84 @@ export type DeviceOrientation = 'portrait' | 'landscape';
 
 export type CanvasBackgroundType = 'black' | 'blur' | 'gradient-indigo' | 'gradient-sunset' | 'grid' | 'white';
 
+export type TransitionType =
+  | 'cross-dissolve'
+  | 'fade-black'
+  | 'fade-white'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'slide-left'
+  | 'slide-right'
+  | 'blur-dissolve'
+  | 'glitch';
+
+export interface TransitionSettings {
+  type: TransitionType;
+  duration: number; // seconds, e.g. 0.8
+  easing: 'linear' | 'ease-in-out' | 'bounce';
+  soundFx?: 'none' | 'whoosh' | 'swish' | 'pop' | 'glitch';
+}
+
+export interface ClipJoinItem {
+  video: VideoAsset;
+  trimStart?: number;
+  trimEnd?: number;
+  transitionToNext?: TransitionSettings;
+}
+
+export interface SubtitleItem {
+  id: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface SubtitleStyleSettings {
+  enabled: boolean;
+  preset: 'hormozi' | 'neon' | 'minimal' | 'netflix' | 'comic';
+  fontSize: number;
+  position: 'bottom' | 'middle' | 'top';
+  primaryColor: string;
+  highlightColor: string;
+  hasBackground: boolean;
+  items: SubtitleItem[];
+}
+
+export interface StickerOverlayItem {
+  id: string;
+  content: string;
+  type: 'emoji' | 'badge' | 'reaction';
+  x: number; // percentage 0 - 100
+  y: number; // percentage 0 - 100
+  size: number;
+  rotation: number;
+  animation: 'none' | 'pulse' | 'bounce' | 'spin';
+}
+
+export interface SilenceInterval {
+  id: string;
+  start: number;
+  end: number;
+  duration: number;
+  enabled: boolean;
+}
+
+export interface SpeechInterval {
+  start: number;
+  end: number;
+  duration: number;
+}
+
+export interface AutoCutSettings {
+  enabled: boolean;
+  thresholdDb: number; // e.g. -32 dB
+  minSilenceDuration: number; // e.g. 0.4s
+  padding: number; // e.g. 0.08s
+  detectedSilences: SilenceInterval[];
+  speechSegments: SpeechInterval[];
+  autoSkipInPlayer: boolean;
+}
+
 export interface EditorStateSnapshot {
   activeFilter: FilterType;
   filterIntensity: number;
@@ -214,6 +296,10 @@ export interface EditorStateSnapshot {
   fontGenerator: FontGeneratorSettings;
   bgStickerUrl: string | null;
   canvasBackground: CanvasBackgroundType;
+  transition?: TransitionSettings;
+  subtitles?: SubtitleStyleSettings;
+  stickers?: StickerOverlayItem[];
+  autoCut?: AutoCutSettings;
   label: string;
   timestamp: number;
 }

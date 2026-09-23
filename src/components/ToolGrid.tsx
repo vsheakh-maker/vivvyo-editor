@@ -14,6 +14,9 @@ import {
   Wand2,
   Flame,
   Camera,
+  Zap,
+  Subtitles,
+  Smile,
 } from 'lucide-react';
 import { ToolType } from '../types.ts';
 
@@ -59,6 +62,15 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool, activeTool }) 
       icon: Type,
       gradient: 'from-amber-500 via-orange-500 to-rose-500',
       badge: 'New',
+      isNew: true,
+    },
+    {
+      id: 'auto-cut',
+      title: 'Auto-Cut Silence',
+      subtitle: 'Remove pauses & jump-cut dead air',
+      icon: Zap,
+      gradient: 'from-amber-500 via-orange-500 to-rose-600',
+      badge: 'AI Silence',
       isNew: true,
     },
     {
@@ -138,9 +150,37 @@ export const ToolGrid: React.FC<ToolGridProps> = ({ onSelectTool, activeTool }) 
     {
       id: 'joiner',
       title: 'Video Joiner',
-      subtitle: 'Merge clips into one movie',
+      subtitle: 'Merge clips with cut transitions',
       icon: Layers,
       gradient: 'from-sky-500 to-blue-600',
+      badge: 'Timeline',
+    },
+    {
+      id: 'transition',
+      title: 'Cinematic Transitions',
+      subtitle: 'Dissolve, zoom, fade & glitch FX',
+      icon: Zap,
+      gradient: 'from-indigo-600 via-purple-600 to-pink-500',
+      badge: 'PRO FX',
+      isNew: true,
+    },
+    {
+      id: 'subtitles',
+      title: 'Captions & Subtitles',
+      subtitle: 'Viral TikTok word captions & styles',
+      icon: Subtitles,
+      gradient: 'from-amber-500 via-yellow-500 to-orange-500',
+      badge: 'Viral',
+      isNew: true,
+    },
+    {
+      id: 'stickers',
+      title: 'Stickers & Reactions',
+      subtitle: 'Viral badges, emojis & callouts',
+      icon: Smile,
+      gradient: 'from-pink-500 via-rose-500 to-red-500',
+      badge: 'Animated',
+      isNew: true,
     },
   ];
 

@@ -9,8 +9,13 @@ import {
   OutputFormat,
   BgRemoverSettings,
   CanvasBackgroundType,
+  SubtitleStyleSettings,
+  StickerOverlayItem,
+  TransitionSettings,
+  SpeechInterval,
+  VideoAsset,
 } from '../types.ts';
-import { getAudioContext, playSynthTrack, audioBufferToWavBlob, SynthPlaybackHandle } from './audioSynth.ts';
+import { getAudioContext, playSynthTrack, audioBufferToWavBlob, playTransitionSoundFx, SynthPlaybackHandle } from './audioSynth.ts';
 import { computeFilteredCss } from './filterUtils.ts';
 
 export interface ExportVideoOptions {
@@ -26,6 +31,8 @@ export interface ExportVideoOptions {
   transform: TransformSettings;
   watermark: WatermarkSettings;
   fontGenerator?: FontGeneratorSettings;
+  subtitles?: SubtitleStyleSettings;
+  stickers?: StickerOverlayItem[];
   audio: AudioSettings;
   compression: CompressionSettings;
   outputFormat?: OutputFormat;
@@ -61,6 +68,8 @@ export async function exportEditedVideo(options: ExportVideoOptions): Promise<Ex
     transform,
     watermark,
     fontGenerator,
+    subtitles,
+    stickers,
     audio,
     compression,
     outputFormat = 'mp4',
@@ -428,6 +437,92 @@ export async function exportEditedVideo(options: ExportVideoOptions): Promise<Ex
           ctx.restore();
         }
 
+        // Draw subtitles if enabled
+        if (subtitles && subtitles.enabled && subtitles.items && subtitles.items.length > 0) {
+          const vCurrentTime = videoElement.currentTime;
+          const activeSub = subtitles.items.find(
+            (it) => vCurrentTime >= it.startTime && vCurrentTime <= it.endTime
+          );
+          if (activeSub && activeSub.text) {
+            ctx.save();
+            const fontSize = Math.round(subtitles.fontSize * (targetHeight / 720));
+            ctx.font = `bold ${fontSize}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            let posY = targetHeight * 0.84;
+            if (subtitles.position === 'top') posY = targetHeight * 0.16;
+            else if (subtitles.position === 'middle') posY = targetHeight * 0.5;
+
+            const textW = ctx.measureText(activeSub.text).width;
+            if (subtitles.hasBackground) {
+              ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+              ctx.beginPath();
+              ctx.roundRect(targetWidth / 2 - textW / 2 - 14, posY - fontSize / 2 - 8, textW + 28, fontSize + 16, 8);
+              ctx.fill();
+            }
+
+            if (subtitles.preset === 'hormozi') {
+              ctx.lineWidth = 6;
+              ctx.strokeStyle = '#000000';
+              ctx.strokeText(activeSub.text.toUpperCase(), targetWidth / 2, posY);
+              ctx.fillStyle = subtitles.highlightColor || '#eab308';
+              ctx.fillText(activeSub.text.toUpperCase(), targetWidth / 2, posY);
+            } else if (subtitles.preset === 'neon') {
+              ctx.shadowColor = subtitles.highlightColor || '#ec4899';
+              ctx.shadowBlur = 14;
+              ctx.fillStyle = subtitles.primaryColor || '#38bdf8';
+              ctx.fillText(activeSub.text, targetWidth / 2, posY);
+            } else {
+              ctx.shadowColor = 'rgba(0,0,0,0.8)';
+              ctx.shadowBlur = 4;
+              ctx.fillStyle = subtitles.primaryColor || '#ffffff';
+              ctx.fillText(activeSub.text, targetWidth / 2, posY);
+            }
+            ctx.restore();
+          }
+        }
+
+        // Draw stickers if present
+        if (stickers && stickers.length > 0) {
+          for (const stk of stickers) {
+            ctx.save();
+            const posX = (stk.x / 100) * targetWidth;
+            const posY = (stk.y / 100) * targetHeight;
+            ctx.translate(posX, posY);
+            ctx.rotate((stk.rotation * Math.PI) / 180);
+
+            const scaledSize = Math.round(stk.size * (targetHeight / 720));
+
+            if (stk.type === 'badge') {
+              ctx.font = `900 ${Math.max(14, Math.round(scaledSize * 0.65))}px sans-serif`;
+              const textMetrics = ctx.measureText(stk.content);
+              const bWidth = textMetrics.width + 24;
+              const bHeight = scaledSize + 12;
+
+              ctx.fillStyle = 'rgba(219, 39, 119, 0.9)';
+              ctx.beginPath();
+              ctx.roundRect(-bWidth / 2, -bHeight / 2, bWidth, bHeight, bHeight / 2);
+              ctx.fill();
+
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+
+              ctx.fillStyle = '#ffffff';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(stk.content, 0, 0);
+            } else {
+              ctx.font = `${scaledSize}px sans-serif`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(stk.content, 0, 0);
+            }
+            ctx.restore();
+          }
+        }
+
         animFrameId = requestAnimationFrame(renderLoop);
       };
 
@@ -714,5 +809,496 @@ export async function removeImageBackground(
     };
 
     img.onerror = reject;
+  });
+}
+
+/**
+ * Joins multiple video clips into a single continuous video with customized visual transitions
+ * (cross-dissolve, fade-to-black, flash-white, zoom-in, zoom-out, slide-left, slide-right, blur, glitch)
+ * and optional synthesized audio SFX (whoosh, swish, pop, glitch).
+ */
+export async function joinVideosWithTransitions(
+  clips: VideoAsset[],
+  transitions: TransitionSettings[],
+  onProgress?: (pct: number) => void
+): Promise<ExportResult> {
+  if (clips.length === 0) {
+    throw new Error('No video clips provided for sequence');
+  }
+
+  // Target canvas dimensions
+  const targetWidth = 1280;
+  const targetHeight = 720;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) throw new Error('Could not initialize canvas context');
+
+  // Pre-instantiate video elements for all clips
+  const videoElements: HTMLVideoElement[] = [];
+  for (let i = 0; i < clips.length; i++) {
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous';
+    v.muted = true;
+    v.playsInline = true;
+    v.src = clips[i].url;
+    videoElements.push(v);
+  }
+
+  // Wait for initial metadata on all clips
+  await Promise.all(
+    videoElements.map(
+      (v) =>
+        new Promise<void>((resolve) => {
+          if (v.readyState >= 1) return resolve();
+          v.onloadedmetadata = () => resolve();
+          v.onerror = () => resolve(); // continue even if metadata has delay
+        })
+    )
+  );
+
+  // Setup media stream & recorder
+  const canvasStream = canvas.captureStream(30);
+  const audioCtx = getAudioContext();
+  const audioDestination = audioCtx.createMediaStreamDestination();
+
+  // Combine canvas video + audio destination
+  const combinedStream = new MediaStream();
+  canvasStream.getVideoTracks().forEach((t) => combinedStream.addTrack(t));
+  audioDestination.stream.getAudioTracks().forEach((t) => combinedStream.addTrack(t));
+
+  let mimeType = 'video/webm;codecs=vp8,opus';
+  if (MediaRecorder.isTypeSupported('video/mp4')) mimeType = 'video/mp4';
+
+  const recorder = new MediaRecorder(combinedStream, {
+    mimeType,
+    videoBitsPerSecond: 3500000,
+  });
+
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+
+  // Calculate durations and transition points
+  const clipDurations = clips.map((c) => Math.min(10, Math.max(3, c.duration || 5)));
+
+  // Transition durations between clip i and clip i+1
+  const transDurations: number[] = [];
+  for (let i = 0; i < clips.length - 1; i++) {
+    const t = transitions[i] || { type: 'cross-dissolve', duration: 0.8, easing: 'ease-in-out' };
+    transDurations.push(Math.min(1.5, Math.max(0.3, t.duration || 0.8)));
+  }
+
+  // Total timeline duration
+  let totalTime = 0;
+  for (let i = 0; i < clipDurations.length; i++) {
+    totalTime += clipDurations[i];
+    if (i > 0) {
+      totalTime -= transDurations[i - 1]; // overlap
+    }
+  }
+  totalTime = Math.max(2, totalTime);
+
+  return new Promise((resolve, reject) => {
+    let animId: number;
+
+    recorder.onstop = () => {
+      cancelAnimationFrame(animId);
+      videoElements.forEach((v) => {
+        try {
+          v.pause();
+          v.src = '';
+        } catch {}
+      });
+
+      const blob = new Blob(chunks, { type: mimeType });
+      resolve({
+        blob,
+        blobUrl: URL.createObjectURL(blob),
+        duration: totalTime,
+        sizeBytes: blob.size,
+        mimeType,
+        filename: `joined-sequence-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
+      });
+    };
+
+    recorder.onerror = (e) => {
+      cancelAnimationFrame(animId);
+      reject(e);
+    };
+
+    recorder.start(100);
+
+    // Timeline playback loop
+    const startTime = performance.now();
+    let currentClipIdx = 0;
+    const sfxTriggered = new Set<number>();
+
+    // Start playing first video
+    try {
+      videoElements[0].currentTime = 0;
+      videoElements[0].play().catch(() => {});
+    } catch {}
+
+    const drawCover = (v: HTMLVideoElement, alpha = 1, scale = 1, offsetX = 0, offsetY = 0) => {
+      if (v.readyState < 2) return;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.translate(targetWidth / 2 + offsetX, targetHeight / 2 + offsetY);
+      ctx.scale(scale, scale);
+      ctx.translate(-targetWidth / 2, -targetHeight / 2);
+
+      const vW = v.videoWidth || targetWidth;
+      const vH = v.videoHeight || targetHeight;
+      const aspect = vW / vH;
+      const targetAspect = targetWidth / targetHeight;
+
+      let drawW = targetWidth;
+      let drawH = targetHeight;
+      let drawX = 0;
+      let drawY = 0;
+
+      if (aspect > targetAspect) {
+        drawW = targetHeight * aspect;
+        drawX = (targetWidth - drawW) / 2;
+      } else {
+        drawH = targetWidth / aspect;
+        drawY = (targetHeight - drawH) / 2;
+      }
+
+      ctx.drawImage(v, drawX, drawY, drawW, drawH);
+      ctx.restore();
+    };
+
+    const render = () => {
+      const now = performance.now();
+      const elapsed = (now - startTime) / 1000;
+      const pct = Math.min(100, Math.round((elapsed / totalTime) * 100));
+      if (onProgress) onProgress(pct);
+
+      if (elapsed >= totalTime) {
+        recorder.stop();
+        return;
+      }
+
+      // Compute which clip / transition is active
+      let segStart = 0;
+      let activeClip = 0;
+      let inTransition = false;
+      let transitionProgress = 0;
+      let transConfig: TransitionSettings = transitions[0] || { type: 'cross-dissolve', duration: 0.8, easing: 'ease-in-out' };
+
+      for (let i = 0; i < clips.length; i++) {
+        const cDur = clipDurations[i];
+        const nextTransDur = i < clips.length - 1 ? transDurations[i] : 0;
+        const cEnd = segStart + cDur;
+        const transStart = cEnd - nextTransDur;
+
+        if (elapsed < cEnd) {
+          activeClip = i;
+          if (i < clips.length - 1 && elapsed >= transStart) {
+            inTransition = true;
+            transConfig = transitions[i] || transConfig;
+            transitionProgress = Math.min(1, (elapsed - transStart) / nextTransDur);
+
+            // Play transition SFX once at the transition boundary
+            if (!sfxTriggered.has(i)) {
+              sfxTriggered.add(i);
+              if (transConfig.soundFx && transConfig.soundFx !== 'none') {
+                playTransitionSoundFx(transConfig.soundFx, 0.6);
+              }
+              // Ensure next video is playing
+              try {
+                if (videoElements[i + 1]) {
+                  videoElements[i + 1].currentTime = 0;
+                  videoElements[i + 1].play().catch(() => {});
+                }
+              } catch {}
+            }
+          }
+          break;
+        }
+
+        segStart = transStart;
+      }
+
+      // Check video playback states
+      if (currentClipIdx !== activeClip) {
+        currentClipIdx = activeClip;
+        try {
+          if (videoElements[activeClip]) {
+            videoElements[activeClip].play().catch(() => {});
+          }
+        } catch {}
+      }
+
+      // Clear frame
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+      const vidA = videoElements[activeClip];
+      const vidB = videoElements[activeClip + 1];
+
+      if (!inTransition || !vidB) {
+        if (vidA) drawCover(vidA, 1);
+      } else {
+        const tType = transConfig.type;
+        const p = transitionProgress;
+
+        switch (tType) {
+          case 'fade-black':
+            if (p < 0.5) {
+              const alphaA = 1 - p * 2;
+              drawCover(vidA, alphaA);
+            } else {
+              const alphaB = (p - 0.5) * 2;
+              drawCover(vidB, alphaB);
+            }
+            break;
+
+          case 'fade-white':
+            if (p < 0.5) {
+              drawCover(vidA, 1);
+              ctx.fillStyle = `rgba(255, 255, 255, ${p * 2})`;
+              ctx.fillRect(0, 0, targetWidth, targetHeight);
+            } else {
+              drawCover(vidB, 1);
+              ctx.fillStyle = `rgba(255, 255, 255, ${(1 - p) * 2})`;
+              ctx.fillRect(0, 0, targetWidth, targetHeight);
+            }
+            break;
+
+          case 'zoom-in': {
+            const scaleA = 1 + p * 0.8;
+            const scaleB = 0.6 + p * 0.4;
+            drawCover(vidA, 1 - p, scaleA);
+            drawCover(vidB, p, scaleB);
+            break;
+          }
+
+          case 'zoom-out': {
+            const scaleA = 1 - p * 0.3;
+            const scaleB = 1.5 - p * 0.5;
+            drawCover(vidA, 1 - p, scaleA);
+            drawCover(vidB, p, scaleB);
+            break;
+          }
+
+          case 'slide-left': {
+            const offA = -p * targetWidth;
+            const offB = (1 - p) * targetWidth;
+            drawCover(vidA, 1, 1, offA, 0);
+            drawCover(vidB, 1, 1, offB, 0);
+            break;
+          }
+
+          case 'slide-right': {
+            const offA = p * targetWidth;
+            const offB = -(1 - p) * targetWidth;
+            drawCover(vidA, 1, 1, offA, 0);
+            drawCover(vidB, 1, 1, offB, 0);
+            break;
+          }
+
+          case 'blur-dissolve': {
+            ctx.save();
+            const blurAmount = Math.sin(p * Math.PI) * 16;
+            ctx.filter = `blur(${blurAmount}px)`;
+            drawCover(vidA, 1 - p);
+            drawCover(vidB, p);
+            ctx.restore();
+            break;
+          }
+
+          case 'glitch': {
+            if (p > 0.15 && p < 0.85) {
+              const jitterX = (Math.random() - 0.5) * 40;
+              const jitterY = (Math.random() - 0.5) * 20;
+              drawCover(vidA, 1 - p);
+              drawCover(vidB, p, 1, jitterX, jitterY);
+              ctx.fillStyle = 'rgba(0, 255, 255, 0.2)';
+              ctx.fillRect(0, Math.random() * targetHeight, targetWidth, 8);
+              ctx.fillStyle = 'rgba(255, 0, 128, 0.2)';
+              ctx.fillRect(0, Math.random() * targetHeight, targetWidth, 12);
+            } else {
+              drawCover(vidA, 1 - p);
+              drawCover(vidB, p);
+            }
+            break;
+          }
+
+          case 'cross-dissolve':
+          default:
+            drawCover(vidA, 1);
+            drawCover(vidB, p);
+            break;
+        }
+      }
+
+      // Subtle status badge
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.beginPath();
+      ctx.roundRect(24, targetHeight - 56, 180, 32, 16);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(`Clip ${activeClip + 1}/${clips.length} • ${Math.round(elapsed)}s`, 40, targetHeight - 36);
+      ctx.restore();
+
+      animId = requestAnimationFrame(render);
+    };
+
+    animId = requestAnimationFrame(render);
+  });
+}
+
+/**
+ * Automatically cuts silent segments and pauses from a video, stitching
+ * the active speech intervals into a clean, jump-cut video clip.
+ */
+export async function cutVideoSilence(
+  videoAsset: VideoAsset,
+  speechSegments: SpeechInterval[],
+  onProgress?: (pct: number) => void
+): Promise<ExportResult> {
+  const segments = speechSegments.length > 0
+    ? speechSegments
+    : [{ start: 0, end: videoAsset.duration || 10, duration: videoAsset.duration || 10 }];
+
+  const totalCleanedDuration = segments.reduce((acc, s) => acc + s.duration, 0);
+
+  const videoElement = document.createElement('video');
+  videoElement.crossOrigin = 'anonymous';
+  videoElement.playsInline = true;
+  videoElement.muted = false;
+  videoElement.src = videoAsset.url;
+
+  await new Promise<void>((resolve) => {
+    if (videoElement.readyState >= 1) return resolve();
+    videoElement.onloadedmetadata = () => resolve();
+    videoElement.onerror = () => resolve();
+  });
+
+  const width = videoElement.videoWidth || videoAsset.width || 1280;
+  const height = videoElement.videoHeight || videoAsset.height || 720;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get canvas 2D context');
+
+  const audioCtx = getAudioContext();
+  const audioDestination = audioCtx.createMediaStreamDestination();
+  try {
+    const sourceNode = audioCtx.createMediaElementSource(videoElement);
+    sourceNode.connect(audioDestination);
+  } catch {
+    // MediaElementSource might already be attached or restricted
+  }
+
+  const canvasStream = canvas.captureStream(30);
+  const combinedStream = new MediaStream();
+  canvasStream.getVideoTracks().forEach((t) => combinedStream.addTrack(t));
+  audioDestination.stream.getAudioTracks().forEach((t) => combinedStream.addTrack(t));
+
+  let mimeType = 'video/webm;codecs=vp8,opus';
+  if (MediaRecorder.isTypeSupported('video/mp4')) {
+    mimeType = 'video/mp4';
+  } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+    mimeType = 'video/webm;codecs=h264,opus';
+  }
+
+  const recorder = new MediaRecorder(combinedStream, {
+    mimeType,
+    videoBitsPerSecond: 3500000,
+  });
+
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+
+  return new Promise((resolve, reject) => {
+    let animId: number;
+    let isStopped = false;
+
+    recorder.onstop = () => {
+      cancelAnimationFrame(animId);
+      try {
+        videoElement.pause();
+        videoElement.src = '';
+      } catch {}
+      const blob = new Blob(chunks, { type: mimeType });
+      resolve({
+        blob,
+        blobUrl: URL.createObjectURL(blob),
+        duration: Math.round(totalCleanedDuration * 100) / 100,
+        sizeBytes: blob.size,
+        mimeType,
+        filename: `${videoAsset.title.replace(/\s+/g, '_')}_autocut.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
+      });
+    };
+
+    recorder.onerror = (e) => {
+      cancelAnimationFrame(animId);
+      reject(e);
+    };
+
+    let currentSegmentIndex = 0;
+    let recordedTime = 0;
+
+    const startNextSegment = () => {
+      if (currentSegmentIndex >= segments.length) {
+        if (!isStopped) {
+          isStopped = true;
+          if (onProgress) onProgress(100);
+          recorder.stop();
+        }
+        return;
+      }
+
+      const seg = segments[currentSegmentIndex];
+      videoElement.currentTime = seg.start;
+      videoElement.play().catch(() => {});
+    };
+
+    videoElement.onseeked = () => {
+      if (isStopped) return;
+      const seg = segments[currentSegmentIndex];
+      if (!seg) return;
+
+      const render = () => {
+        if (isStopped) return;
+
+        // Draw video frame to canvas
+        ctx.drawImage(videoElement, 0, 0, width, height);
+
+        // Calculate progress
+        const segElapsed = Math.max(0, videoElement.currentTime - seg.start);
+        const currentOverallTime = recordedTime + segElapsed;
+        const pct = Math.min(99, Math.round((currentOverallTime / Math.max(1, totalCleanedDuration)) * 100));
+        if (onProgress) onProgress(pct);
+
+        // Check if current speech segment is finished
+        if (videoElement.currentTime >= seg.end || videoElement.ended) {
+          recordedTime += seg.duration;
+          currentSegmentIndex++;
+          startNextSegment();
+          return;
+        }
+
+        animId = requestAnimationFrame(render);
+      };
+
+      animId = requestAnimationFrame(render);
+    };
+
+    recorder.start(100);
+    startNextSegment();
   });
 }

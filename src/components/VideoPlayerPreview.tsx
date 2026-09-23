@@ -9,6 +9,9 @@ import {
   CustomCropSettings,
   FontGeneratorSettings,
   CanvasBackgroundType,
+  SubtitleStyleSettings,
+  StickerOverlayItem,
+  SilenceInterval,
 } from '../types.ts';
 import { computeFilteredCss } from '../utils/filterUtils.ts';
 
@@ -26,6 +29,8 @@ interface VideoPlayerPreviewProps {
   watermark: WatermarkSettings;
   fontGenerator?: FontGeneratorSettings;
   bgStickerUrl?: string | null;
+  subtitles?: SubtitleStyleSettings;
+  stickers?: StickerOverlayItem[];
   audio: AudioSettings;
   aspectRatio: AspectRatioType;
   customCrop?: CustomCropSettings;
@@ -33,6 +38,8 @@ interface VideoPlayerPreviewProps {
   speed: number;
   trimRange?: [number, number];
   onVideoError?: () => void;
+  isLiveSkipActive?: boolean;
+  silenceSkipIntervals?: SilenceInterval[];
 }
 
 export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
@@ -49,6 +56,8 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   watermark,
   fontGenerator,
   bgStickerUrl,
+  subtitles,
+  stickers = [],
   audio,
   aspectRatio,
   customCrop,
@@ -56,6 +65,8 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   speed,
   trimRange,
   onVideoError,
+  isLiveSkipActive = false,
+  silenceSkipIntervals = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -92,6 +103,19 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
       videoRef.current.currentTime = start;
     }
   }, [currentTime, trimRange, videoRef]);
+
+  // Handle live Auto-Cut silence skipping during playback
+  useEffect(() => {
+    if (!isLiveSkipActive || !silenceSkipIntervals || silenceSkipIntervals.length === 0 || !videoRef.current || !isPlaying) return;
+    for (const sil of silenceSkipIntervals) {
+      if (sil.enabled && currentTime >= sil.start && currentTime < sil.end) {
+        const nextTime = Math.min(video.duration, sil.end + 0.02);
+        videoRef.current.currentTime = nextTime;
+        onTimeUpdate(nextTime);
+        break;
+      }
+    }
+  }, [currentTime, isLiveSkipActive, silenceSkipIntervals, isPlaying, videoRef, video.duration, onTimeUpdate]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -209,6 +233,13 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
 
       {/* Video Framing & Aspect Ratio Container */}
       <div className="relative flex items-center justify-center w-full h-full overflow-hidden p-2">
+        {/* Live Auto-Cut Jump indicator */}
+        {isLiveSkipActive && (
+          <div className="absolute top-4 left-4 z-30 flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 backdrop-blur-md text-amber-300 text-[10px] font-bold shadow-lg animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            <span>Auto-Cut Jump Active</span>
+          </div>
+        )}
         <div
           className="relative flex items-center justify-center overflow-hidden rounded-xl shadow-2xl bg-zinc-950 transition-all duration-300"
           style={aspectStyle}
@@ -315,6 +346,90 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
               </span>
             </div>
           )}
+
+          {/* Subtitles & Captions Overlay in Live Preview */}
+          {subtitles && subtitles.enabled && (() => {
+            const activeSub = subtitles.items.find(
+              (it) => currentTime >= it.startTime && currentTime <= it.endTime
+            );
+            if (!activeSub) return null;
+
+            const posClass =
+              subtitles.position === 'top'
+                ? 'top-[16%]'
+                : subtitles.position === 'middle'
+                ? 'top-[50%] -translate-y-1/2'
+                : 'bottom-[18%]';
+
+            return (
+              <div
+                className={`absolute left-0 right-0 z-25 text-center pointer-events-none px-4 flex items-center justify-center ${posClass}`}
+              >
+                <div
+                  className={`inline-block max-w-[90%] px-3 py-1 rounded-xl transition-all ${
+                    subtitles.hasBackground ? 'bg-black/75 backdrop-blur-xs' : ''
+                  }`}
+                  style={{
+                    fontSize: `${Math.max(13, Math.round(subtitles.fontSize * 0.65))}px`,
+                    fontWeight: 900,
+                    textTransform: subtitles.preset === 'hormozi' ? 'uppercase' : 'none',
+                    color: subtitles.primaryColor,
+                    textShadow:
+                      subtitles.preset === 'hormozi'
+                        ? '2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 4px 8px rgba(0,0,0,0.9)'
+                        : subtitles.preset === 'neon'
+                        ? `0 0 10px ${subtitles.highlightColor}, 0 0 20px ${subtitles.highlightColor}`
+                        : '0 2px 6px rgba(0,0,0,0.8)',
+                    fontFamily: subtitles.preset === 'comic' ? 'cursive, sans-serif' : 'sans-serif',
+                  }}
+                >
+                  <span style={{ color: subtitles.highlightColor }}>
+                    {activeSub.text}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Stickers & Reaction Badges Overlay in Live Preview */}
+          {stickers && stickers.length > 0 && stickers.map((sticker) => {
+            const animClass =
+              sticker.animation === 'pulse'
+                ? 'animate-pulse'
+                : sticker.animation === 'bounce'
+                ? 'animate-bounce'
+                : sticker.animation === 'spin'
+                ? 'animate-spin'
+                : '';
+
+            return (
+              <div
+                key={sticker.id}
+                className={`absolute z-24 pointer-events-none select-none transition-transform ${animClass}`}
+                style={{
+                  left: `${sticker.x}%`,
+                  top: `${sticker.y}%`,
+                  transform: `translate(-50%, -50%) rotate(${sticker.rotation}deg)`,
+                }}
+              >
+                {sticker.type === 'badge' ? (
+                  <span
+                    className="px-2.5 py-1 rounded-full font-black tracking-tight text-white bg-gradient-to-r from-pink-600 to-purple-600 shadow-xl border border-white/20 whitespace-nowrap"
+                    style={{ fontSize: `${Math.max(10, Math.round(sticker.size * 0.4))}px` }}
+                  >
+                    {sticker.content}
+                  </span>
+                ) : (
+                  <span
+                    style={{ fontSize: `${Math.max(16, Math.round(sticker.size * 0.7))}px` }}
+                    className="drop-shadow-lg inline-block"
+                  >
+                    {sticker.content}
+                  </span>
+                )}
+              </div>
+            );
+          })}
 
           {/* Aspect Ratio Guide Grid (subtle outline) */}
           {aspectRatio !== 'original' && (

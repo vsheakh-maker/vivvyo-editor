@@ -19,6 +19,10 @@ import { ExtractAudioTool } from './components/tools/ExtractAudioTool.tsx';
 import { WatermarkTool } from './components/tools/WatermarkTool.tsx';
 import { SlideshowTool } from './components/tools/SlideshowTool.tsx';
 import { VideoJoinerTool } from './components/tools/VideoJoinerTool.tsx';
+import { TransitionTool } from './components/tools/TransitionTool.tsx';
+import { SubtitleTool } from './components/tools/SubtitleTool.tsx';
+import { StickersTool } from './components/tools/StickersTool.tsx';
+import { AutoCutTool } from './components/tools/AutoCutTool.tsx';
 import { ExportProgressModal } from './components/ExportProgressModal.tsx';
 import { MyStudioModal } from './components/MyStudioModal.tsx';
 import { CameraRecorderModal } from './components/CameraRecorderModal.tsx';
@@ -46,9 +50,14 @@ import {
   TikTokSong,
   CanvasBackgroundType,
   EditorStateSnapshot,
+  TransitionSettings,
+  SubtitleStyleSettings,
+  StickerOverlayItem,
+  SilenceInterval,
+  SpeechInterval,
 } from './types.ts';
 import { SAMPLE_VIDEOS, FILTERS } from './data/sampleMedia.ts';
-import { exportEditedVideo, ExportResult } from './utils/videoProcessor.ts';
+import { exportEditedVideo, joinVideosWithTransitions, cutVideoSilence, ExportResult } from './utils/videoProcessor.ts';
 import { generateSyntheticVideoBlob } from './utils/sampleVideoFallback.ts';
 
 const STORAGE_KEY = 'vivvyo_editor_saved_items_v2';
@@ -119,6 +128,33 @@ export default function App() {
   // Background remover cutout sticker
   const [bgStickerUrl, setBgStickerUrl] = useState<string | null>(null);
 
+  // Transitions Settings (Between clips or scene transitions)
+  const [transitionSettings, setTransitionSettings] = useState<TransitionSettings>({
+    type: 'cross-dissolve',
+    duration: 0.8,
+    easing: 'ease-in-out',
+    soundFx: 'whoosh',
+  });
+
+  // Subtitles and Viral Captions
+  const [subtitleSettings, setSubtitleSettings] = useState<SubtitleStyleSettings>({
+    enabled: false,
+    preset: 'hormozi',
+    fontSize: 24,
+    position: 'bottom',
+    primaryColor: '#ffffff',
+    highlightColor: '#eab308',
+    hasBackground: true,
+    items: [],
+  });
+
+  // Stickers & Reactions Overlay
+  const [stickerOverlays, setStickerOverlays] = useState<StickerOverlayItem[]>([]);
+
+  // Auto-Cut Silence Jump State
+  const [isLiveSkipActive, setIsLiveSkipActive] = useState<boolean>(false);
+  const [silenceSkipIntervals, setSilenceSkipIntervals] = useState<SilenceInterval[]>([]);
+
   // Undo / Redo History Stacks
   const [undoStack, setUndoStack] = useState<EditorStateSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<EditorStateSnapshot[]>([]);
@@ -148,6 +184,9 @@ export default function App() {
       fontGenerator: { ...fontGenerator },
       bgStickerUrl,
       canvasBackground,
+      transition: { ...transitionSettings },
+      subtitles: { ...subtitleSettings, items: [...subtitleSettings.items] },
+      stickers: [...stickerOverlays],
       label,
       timestamp: Date.now(),
     };
@@ -180,6 +219,9 @@ export default function App() {
     setFontGenerator(snap.fontGenerator);
     setBgStickerUrl(snap.bgStickerUrl);
     setCanvasBackground(snap.canvasBackground ?? 'black');
+    if (snap.transition) setTransitionSettings(snap.transition);
+    if (snap.subtitles) setSubtitleSettings(snap.subtitles);
+    if (snap.stickers) setStickerOverlays(snap.stickers);
   };
 
   // Undo action
@@ -199,6 +241,9 @@ export default function App() {
       fontGenerator: { ...fontGenerator },
       bgStickerUrl,
       canvasBackground,
+      transition: { ...transitionSettings },
+      subtitles: { ...subtitleSettings, items: [...subtitleSettings.items] },
+      stickers: [...stickerOverlays],
       label: 'Current Edit',
       timestamp: Date.now(),
     };
@@ -230,6 +275,9 @@ export default function App() {
       fontGenerator: { ...fontGenerator },
       bgStickerUrl,
       canvasBackground,
+      transition: { ...transitionSettings },
+      subtitles: { ...subtitleSettings, items: [...subtitleSettings.items] },
+      stickers: [...stickerOverlays],
       label: 'Current Edit',
       timestamp: Date.now(),
     };
@@ -432,6 +480,8 @@ export default function App() {
         transform,
         watermark,
         fontGenerator,
+        subtitles: subtitleSettings,
+        stickers: stickerOverlays,
         audio: audioSettings,
         compression: {
           targetResolution: config.resolution as any,
@@ -507,14 +557,105 @@ export default function App() {
     showToast('Slideshow video created!');
   };
 
-  const handleJoinedVideos = (clips: VideoAsset[]) => {
-    const totalDuration = clips.reduce((acc, c) => acc + c.duration, 0);
-    // Switch to first clip and notify
-    if (clips.length > 0) {
-      setCurrentVideo(clips[0]);
+  const handleJoinedVideos = async (clips: VideoAsset[], transitions: TransitionSettings[]) => {
+    setActiveExportTitle('Joined Clip Sequence');
+    setIsExportModalOpen(true);
+    setIsProcessingExport(true);
+    setExportProgress(10);
+    setExportResult(null);
+
+    try {
+      const res = await joinVideosWithTransitions(clips, transitions, (pct) => {
+        setExportProgress(pct);
+      });
+      setExportResult(res);
+      setIsProcessingExport(false);
+
+      const newItem: ExportedItem = {
+        id: `sequence-${Date.now()}`,
+        title: `Joined Sequence (${clips.length} Clips)`,
+        type: 'video',
+        blobUrl: res.blobUrl,
+        blobSize: res.sizeBytes,
+        duration: res.duration,
+        createdAt: Date.now(),
+        format: 'mp4',
+        toolUsed: 'Video Joiner & Transitions',
+      };
+      setSavedItems((prev) => [newItem, ...prev]);
+      showToast(`Merged ${clips.length} clips with seamless transitions!`);
+    } catch (err) {
+      console.error('Sequence join failed', err);
+      setIsProcessingExport(false);
+      showToast('Joining sequence failed. Please try again.');
     }
-    showToast(`Merged sequence of ${clips.length} clips ready (${Math.round(totalDuration)}s)!`);
-    handleOpenExportDialog('Joined Clips');
+  };
+
+  const handleApplyAutoCutCleanedClip = async (
+    speechSegments: SpeechInterval[],
+    silences: SilenceInterval[],
+    cleanedDuration: number
+  ) => {
+    setActiveExportTitle('Auto-Cut Jump-Cut Video');
+    setIsExportModalOpen(true);
+    setIsProcessingExport(true);
+    setExportProgress(15);
+    setExportResult(null);
+
+    try {
+      const res = await cutVideoSilence(currentVideo, speechSegments, (pct) => {
+        setExportProgress(Math.max(15, pct));
+      });
+
+      setExportResult(res);
+      setIsProcessingExport(false);
+
+      const cleanedAsset: VideoAsset = {
+        id: `autocut-${Date.now()}`,
+        title: `${currentVideo.title} (Cleaned)`,
+        url: res.blobUrl,
+        duration: res.duration,
+        width: currentVideo.width,
+        height: currentVideo.height,
+        sizeBytes: res.sizeBytes,
+        isCustomUpload: true,
+      };
+
+      // Add to snapshot history
+      takeSnapshot('Auto-Cut Pauses');
+
+      // Present the cleaned clip directly in the editor!
+      setCurrentVideo(cleanedAsset);
+      setDuration(res.duration);
+      setTrimRange([0, res.duration]);
+      setCurrentTime(0);
+      setIsLiveSkipActive(false);
+      setSilenceSkipIntervals([]);
+      setActiveTool(null);
+
+      // Save to My Studio list
+      const newItem: ExportedItem = {
+        id: cleanedAsset.id,
+        title: cleanedAsset.title,
+        type: 'video',
+        blobUrl: res.blobUrl,
+        blobSize: res.sizeBytes,
+        duration: res.duration,
+        createdAt: Date.now(),
+        format: res.format || 'mp4',
+        toolUsed: 'Auto-Cut Silence',
+      };
+      setSavedItems((prev) => [newItem, ...prev]);
+
+      showToast(`🎉 Cleaned clip (${res.duration}s) presented in editor! Removed ${silences.length} pauses.`);
+    } catch (err) {
+      console.error('Auto-Cut processing failed', err);
+      setIsProcessingExport(false);
+      showToast('Fast export encountered an issue; enabled live jump-cut mode in player.');
+      setIsLiveSkipActive(true);
+      setSilenceSkipIntervals(silences);
+      setIsExportModalOpen(false);
+    }
   };
 
   const handleDeleteSavedItem = (id: string) => {
@@ -627,6 +768,8 @@ export default function App() {
         watermark={watermark}
         fontGenerator={fontGenerator}
         bgStickerUrl={bgStickerUrl}
+        subtitles={subtitleSettings}
+        stickers={stickerOverlays}
         audio={audioSettings}
         aspectRatio={aspectRatio}
         customCrop={customCrop}
@@ -634,6 +777,8 @@ export default function App() {
         speed={speed}
         trimRange={activeTool === 'trim' ? trimRange : undefined}
         onVideoError={handleVideoError}
+        isLiveSkipActive={isLiveSkipActive}
+        silenceSkipIntervals={silenceSkipIntervals}
       />
 
       {/* Main Workspace Area */}
@@ -666,6 +811,36 @@ export default function App() {
                 takeSnapshot('Reset Trim');
                 setTrimRange([0, duration]);
               }}
+              onOpenAutoCut={() => setActiveTool('auto-cut')}
+            />
+          </div>
+        )}
+
+        {activeTool === 'auto-cut' && (
+          <div className="flex-1 flex flex-col justify-end">
+            <AutoCutTool
+              currentVideo={currentVideo}
+              currentTime={currentTime}
+              duration={duration}
+              isPlaying={isPlaying}
+              onSeek={(time) => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = time;
+                  setCurrentTime(time);
+                }
+              }}
+              onTogglePlay={handleTogglePlay}
+              onApplyCleanedClip={handleApplyAutoCutCleanedClip}
+              onToggleLiveSkip={(enabled, silences) => {
+                setIsLiveSkipActive(enabled);
+                setSilenceSkipIntervals(silences);
+                if (enabled) {
+                  showToast('⚡ Live Auto-Cut jump enabled in editor!');
+                } else {
+                  showToast('Live Auto-Cut jump disabled.');
+                }
+              }}
+              isLiveSkipActive={isLiveSkipActive}
             />
           </div>
         )}
@@ -842,6 +1017,85 @@ export default function App() {
             <VideoJoinerTool
               currentVideo={currentVideo}
               onJoinVideos={handleJoinedVideos}
+              onOpenTransitionTool={() => setActiveTool('transition')}
+            />
+          </div>
+        )}
+
+        {activeTool === 'transition' && (
+          <div className="flex-1 flex flex-col justify-end">
+            <TransitionTool
+              settings={transitionSettings}
+              onChangeSettings={(s) => {
+                takeSnapshot('Transition FX');
+                setTransitionSettings(s);
+              }}
+              currentVideo={currentVideo}
+              onOpenJoiner={() => setActiveTool('joiner')}
+              onApplyToJoiner={() => {
+                showToast(`Transition set to ${transitionSettings.type}!`);
+                setActiveTool('joiner');
+              }}
+              onReset={() => {
+                takeSnapshot('Reset Transition');
+                setTransitionSettings({
+                  type: 'cross-dissolve',
+                  duration: 0.8,
+                  easing: 'ease-in-out',
+                  soundFx: 'whoosh',
+                });
+              }}
+            />
+          </div>
+        )}
+
+        {activeTool === 'subtitles' && (
+          <div className="flex-1 flex flex-col justify-end">
+            <SubtitleTool
+              settings={subtitleSettings}
+              onChangeSettings={(s) => {
+                takeSnapshot('Captions');
+                setSubtitleSettings(s);
+              }}
+              videoDuration={duration}
+              currentTime={currentTime}
+              onSeek={(time) => {
+                if (videoRef.current) {
+                  videoRef.current.currentTime = time;
+                  setCurrentTime(time);
+                }
+              }}
+              onApply={() => handleOpenExportDialog('Captioned Video')}
+              onReset={() => {
+                takeSnapshot('Reset Subtitles');
+                setSubtitleSettings({
+                  enabled: false,
+                  preset: 'hormozi',
+                  fontSize: 24,
+                  position: 'bottom',
+                  primaryColor: '#ffffff',
+                  highlightColor: '#eab308',
+                  hasBackground: true,
+                  items: [],
+                });
+              }}
+            />
+          </div>
+        )}
+
+        {activeTool === 'stickers' && (
+          <div className="flex-1 flex flex-col justify-end">
+            <StickersTool
+              stickers={stickerOverlays}
+              onChangeStickers={(stks) => {
+                takeSnapshot('Stickers');
+                setStickerOverlays(stks);
+              }}
+              onApply={() => handleOpenExportDialog('Stickers Video')}
+              onReset={() => {
+                takeSnapshot('Clear Stickers');
+                setStickerOverlays([]);
+              }}
             />
           </div>
         )}

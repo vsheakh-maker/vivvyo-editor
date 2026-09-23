@@ -397,3 +397,95 @@ export function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
 
   return new Blob([out.buffer], { type: 'audio/wav' });
 }
+
+/**
+ * Play synthesized sound effects for video transitions (whoosh, swish, pop, glitch)
+ */
+export function playTransitionSoundFx(effect: 'whoosh' | 'swish' | 'pop' | 'glitch' | 'none', volume = 0.5): void {
+  if (effect === 'none') return;
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(volume * 0.7, now);
+    masterGain.connect(ctx.destination);
+
+    if (effect === 'whoosh') {
+      // White noise buffer with sweeping bandpass filter
+      const bufferSize = ctx.sampleRate * 0.4;
+      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      const whiteNoise = ctx.createBufferSource();
+      whiteNoise.buffer = noiseBuffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(200, now);
+      filter.frequency.exponentialRampToValueAtTime(1400, now + 0.18);
+      filter.frequency.exponentialRampToValueAtTime(300, now + 0.38);
+      filter.Q.setValueAtTime(3.0, now);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.8, now + 0.16);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+      whiteNoise.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+
+      whiteNoise.start(now);
+      whiteNoise.stop(now + 0.4);
+    } else if (effect === 'swish') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(120, now + 0.25);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.6, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    } else if (effect === 'pop') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(450, now);
+      osc.frequency.exponentialRampToValueAtTime(90, now + 0.12);
+
+      gain.gain.setValueAtTime(0.9, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } else if (effect === 'glitch') {
+      for (let i = 0; i < 4; i++) {
+        const burstTime = now + i * 0.04;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150 + Math.random() * 800, burstTime);
+
+        gain.gain.setValueAtTime(0.4, burstTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, burstTime + 0.035);
+
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(burstTime);
+        osc.stop(burstTime + 0.038);
+      }
+    }
+  } catch {
+    // Ignore audio context errors
+  }
+}

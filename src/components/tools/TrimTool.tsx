@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scissors, Play, RotateCcw, Check, Sparkles } from 'lucide-react';
+import { Scissors, Play, RotateCcw, Check, Sparkles, Zap } from 'lucide-react';
 
 interface TrimToolProps {
   duration: number;
@@ -8,6 +8,7 @@ interface TrimToolProps {
   onPreviewTrim: () => void;
   onApplyTrim: () => void;
   onReset: () => void;
+  onOpenAutoCut?: () => void;
 }
 
 export const TrimTool: React.FC<TrimToolProps> = ({
@@ -17,6 +18,7 @@ export const TrimTool: React.FC<TrimToolProps> = ({
   onPreviewTrim,
   onApplyTrim,
   onReset,
+  onOpenAutoCut,
 }) => {
   const [start, end] = trimRange;
   const clipDuration = Math.max(0, end - start);
@@ -56,9 +58,22 @@ export const TrimTool: React.FC<TrimToolProps> = ({
           <Scissors className="w-4 h-4 text-amber-400" />
           <span className="text-xs font-bold text-white uppercase tracking-wider">Trim & Cut</span>
         </div>
-        <div className="flex items-center space-x-1.5 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/60">
-          <span className="text-[10px] text-zinc-400">Clip Length:</span>
-          <span className="text-xs font-mono font-bold text-amber-400">{formatSec(clipDuration)}</span>
+
+        <div className="flex items-center space-x-2">
+          {onOpenAutoCut && (
+            <button
+              onClick={onOpenAutoCut}
+              className="flex items-center space-x-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-amber-500/20 to-rose-500/20 hover:from-amber-500/30 hover:to-rose-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition-all active:scale-95"
+            >
+              <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+              <span>Auto-Cut Silence</span>
+            </button>
+          )}
+
+          <div className="flex items-center space-x-1.5 bg-zinc-800/80 px-2.5 py-1 rounded-md border border-zinc-700/60">
+            <span className="text-[10px] text-zinc-400">Clip Length:</span>
+            <span className="text-xs font-mono font-bold text-amber-400">{formatSec(clipDuration)}</span>
+          </div>
         </div>
       </div>
 
