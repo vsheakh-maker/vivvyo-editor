@@ -72,10 +72,12 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [internalMuted, setInternalMuted] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [useCors, setUseCors] = useState(true);
 
   // Reset error when video changes
   useEffect(() => {
     setLoadError(false);
+    setUseCors(true);
   }, [video.url]);
 
   // Sync speed to videoRef
@@ -208,7 +210,7 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
     <div
       ref={containerRef}
       className="relative w-full bg-black flex flex-col items-center justify-center overflow-hidden shrink-0 select-none group"
-      style={{ height: '36vh', minHeight: '220px', maxHeight: '340px' }}
+      style={{ height: '34vh', minHeight: '190px', maxHeight: '330px' }}
     >
       {/* Background Ambience / Canvas Background Option */}
       {canvasBackground === 'blur' && (
@@ -247,14 +249,18 @@ export const VideoPlayerPreview: React.FC<VideoPlayerPreviewProps> = ({
           <video
             ref={videoRef}
             src={video.url}
-            crossOrigin="anonymous"
+            crossOrigin={useCors ? 'anonymous' : undefined}
             playsInline
             loop={!trimRange}
             onClick={onTogglePlay}
             onError={() => {
-              setLoadError(true);
-              if (onVideoError) {
-                onVideoError();
+              if (useCors && !video.url.startsWith('blob:') && !video.url.startsWith('data:')) {
+                setUseCors(false);
+              } else {
+                setLoadError(true);
+                if (onVideoError) {
+                  onVideoError();
+                }
               }
             }}
             onTimeUpdate={() => {

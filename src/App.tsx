@@ -424,29 +424,39 @@ export default function App() {
     showToast(`Camera recording loaded!`);
   };
 
+  const failedUrlsRef = useRef<Set<string>>(new Set());
+
   const handleVideoError = async () => {
-    // If the active video fails to load, try next verified sample video first
-    const otherSample = SAMPLE_VIDEOS.find((v) => v.url !== currentVideo.url);
-    if (otherSample && !currentVideo.isCustomUpload) {
-      showToast(`Source blocked. Switching to "${otherSample.title}"...`);
-      setCurrentVideo(otherSample);
-      return;
+    failedUrlsRef.current.add(currentVideo.url);
+
+    // If the active video fails to load, try next untried sample video first
+    if (!currentVideo.isCustomUpload) {
+      const untriedSample = SAMPLE_VIDEOS.find((v) => !failedUrlsRef.current.has(v.url));
+      if (untriedSample) {
+        showToast(`Switching to backup footage: "${untriedSample.title}"...`);
+        setCurrentVideo(untriedSample);
+        return;
+      }
     }
 
-    // Otherwise generate an immediate synthetic video blob
-    showToast('Generating offline studio demo clip...');
-    const synthUrl = await generateSyntheticVideoBlob();
-    if (synthUrl) {
-      setCurrentVideo({
-        id: `synth-${Date.now()}`,
-        title: 'Vivvyo Studio Demo',
-        url: synthUrl,
-        duration: 2,
-        width: 640,
-        height: 360,
-        isCustomUpload: true,
-      });
-      showToast('Loaded offline studio clip!');
+    // Otherwise generate an immediate synthetic offline video clip
+    showToast('Loading studio backup video clip...');
+    try {
+      const synthUrl = await generateSyntheticVideoBlob();
+      if (synthUrl) {
+        setCurrentVideo({
+          id: `synth-${Date.now()}`,
+          title: 'Vivvyo Studio Demo',
+          url: synthUrl,
+          duration: 2,
+          width: 640,
+          height: 360,
+          isCustomUpload: true,
+        });
+        showToast('Loaded offline studio clip!');
+      }
+    } catch (err) {
+      console.warn('Fallback synthetic video error:', err);
     }
   };
 

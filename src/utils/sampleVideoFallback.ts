@@ -1,17 +1,38 @@
+let cachedSyntheticUrl: string | null = null;
+
 /**
  * Generates an offline synthetic canvas video blob URL.
  * Guarantees that the HTML5 video player always has a valid, playable source
  * even under strict firewalls, network outages, or blocked CDN connections.
  */
 export function generateSyntheticVideoBlob(): Promise<string> {
+  if (cachedSyntheticUrl) {
+    return Promise.resolve(cachedSyntheticUrl);
+  }
+
   return new Promise((resolve) => {
+    let hasResolved = false;
+    const safeResolve = (url: string) => {
+      if (!hasResolved) {
+        hasResolved = true;
+        if (url) cachedSyntheticUrl = url;
+        resolve(url);
+      }
+    };
+
+    // Safety timeout after 2.5s
+    const timeoutId = setTimeout(() => {
+      safeResolve('');
+    }, 2500);
+
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 640;
       canvas.height = 360;
       const ctx = canvas.getContext('2d');
       if (!ctx || typeof canvas.captureStream !== 'function') {
-        resolve('');
+        clearTimeout(timeoutId);
+        safeResolve('');
         return;
       }
 
@@ -28,7 +49,8 @@ export function generateSyntheticVideoBlob(): Promise<string> {
           mimeType = 'video/webm';
         }
       } else {
-        resolve('');
+        clearTimeout(timeoutId);
+        safeResolve('');
         return;
       }
 
@@ -39,71 +61,87 @@ export function generateSyntheticVideoBlob(): Promise<string> {
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        resolve(url);
+        clearTimeout(timeoutId);
+        try {
+          const blob = new Blob(chunks, { type: mimeType });
+          const url = URL.createObjectURL(blob);
+          safeResolve(url);
+        } catch {
+          safeResolve('');
+        }
       };
 
       recorder.start(100);
 
       let frame = 0;
-      const totalFrames = 60; // 2 seconds at 30 fps
+      const totalFrames = 30; // 1 second at 30 fps for rapid load
       const timer = setInterval(() => {
         frame++;
-        // Render stylized vibrant gradient loop
-        const hue = (frame * 5) % 360;
-        const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-        grad.addColorStop(0, `hsl(${hue}, 85%, 55%)`);
-        grad.addColorStop(0.5, `hsl(${(hue + 45) % 360}, 80%, 40%)`);
-        grad.addColorStop(1, `hsl(${(hue + 90) % 360}, 90%, 25%)`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        try {
+          // Render stylized vibrant gradient loop
+          const hue = (frame * 12) % 360;
+          const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+          grad.addColorStop(0, `hsl(${hue}, 85%, 55%)`);
+          grad.addColorStop(0.5, `hsl(${(hue + 45) % 360}, 80%, 40%)`);
+          grad.addColorStop(1, `hsl(${(hue + 90) % 360}, 90%, 25%)`);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Grid lines overlay
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-        ctx.lineWidth = 1;
-        for (let x = 0; x < canvas.width; x += 40) {
+          // Grid lines overlay
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = 1;
+          for (let x = 0; x < canvas.width; x += 40) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+          }
+
+          // Geometric pulsating badge
+          const pulse = 1 + Math.sin(frame * 0.2) * 0.08;
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2 - 20);
+          ctx.scale(pulse, pulse);
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
           ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, canvas.height);
+          ctx.roundRect(-160, -45, 320, 90, 16);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          ctx.lineWidth = 2;
           ctx.stroke();
-        }
 
-        // Geometric pulsating badge
-        const pulse = 1 + Math.sin(frame * 0.15) * 0.08;
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2 - 20);
-        ctx.scale(pulse, pulse);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-        ctx.beginPath();
-        ctx.roundRect(-160, -45, 320, 90, 16);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('VIVVYO STUDIO', 0, 0);
+          ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.fillStyle = '#67e8f9';
+          ctx.fillText('OFFLINE DEMO FOOTAGE', 0, 24);
+          ctx.restore();
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('VIVVYO STUDIO', 0, 0);
-        ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        ctx.fillStyle = '#67e8f9';
-        ctx.fillText('LIVE CANVAS DEMO CLIP', 0, 24);
-        ctx.restore();
+          // Footer telemetry
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          ctx.font = '12px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Frame ${frame}/${totalFrames} • 60 FPS • 1080p Master Ready`, canvas.width / 2, canvas.height - 24);
 
-        // Footer telemetry
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.font = '12px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`Frame ${frame}/${totalFrames} • 60 FPS • 1080p Master Ready`, canvas.width / 2, canvas.height - 24);
-
-        if (frame >= totalFrames) {
+          if (frame >= totalFrames) {
+            clearInterval(timer);
+            if (recorder.state === 'recording') {
+              recorder.stop();
+            }
+          }
+        } catch {
           clearInterval(timer);
-          recorder.stop();
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
         }
       }, 1000 / 30);
     } catch {
-      resolve('');
+      clearTimeout(timeoutId);
+      safeResolve('');
     }
   });
 }
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Tablet, Monitor, RotateCcw, Battery, Wifi, WifiOff } from 'lucide-react';
+import { Smartphone, Tablet, Monitor, RotateCcw, Battery, Wifi } from 'lucide-react';
 import { DeviceMode, DeviceOrientation } from '../types.ts';
 
 interface DeviceSimulatorProps {
@@ -7,7 +7,8 @@ interface DeviceSimulatorProps {
 }
 
 export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) => {
-  const [deviceMode, setDeviceMode] = useState<DeviceMode>('phone');
+  // Default to 'responsive' so app preview fills the preview container cleanly
+  const [deviceMode, setDeviceMode] = useState<DeviceMode>('responsive');
   const [orientation, setOrientation] = useState<DeviceOrientation>('portrait');
   const [currentTimeStr, setCurrentTimeStr] = useState('9:41');
   const [isRealMobileOrTablet, setIsRealMobileOrTablet] = useState(false);
@@ -36,30 +37,46 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
     return () => clearInterval(interval);
   }, []);
 
-  // If on actual mobile device or user selected responsive mode, fill viewport
+  // Responsive mode: App fills the preview container 100%
   if (isRealMobileOrTablet || deviceMode === 'responsive') {
     return (
-      <div className="w-full h-screen overflow-hidden bg-zinc-950 text-white flex flex-col font-sans select-none">
-        {/* Device toggle pill on responsive desktop */}
+      <div className="w-full h-full min-h-screen bg-zinc-950 text-white flex flex-col font-sans select-none overflow-hidden">
+        {/* Device toggle toolbar for desktop / large preview */}
         {!isRealMobileOrTablet && (
-          <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between z-50">
-            <span className="text-xs font-medium text-zinc-400">Mobile & Tablet Applet View</span>
-            <div className="flex items-center space-x-1">
+          <div className="bg-zinc-900/90 border-b border-zinc-800/80 px-3.5 py-1.5 flex items-center justify-between z-40 shrink-0 backdrop-blur-md">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-semibold text-zinc-300">Vivvyo Studio Active Preview</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <button
+                id="btn-switch-full"
+                type="button"
+                onClick={() => setDeviceMode('responsive')}
+                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-indigo-600 text-white flex items-center gap-1 shadow-sm"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Full Studio</span>
+              </button>
               <button
                 id="btn-switch-phone"
+                type="button"
                 onClick={() => setDeviceMode('phone')}
-                className="px-2.5 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1.5"
+                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 transition-colors"
+                title="Switch to Mobile Phone Frame"
               >
                 <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
-                Phone Mode
+                <span>Phone (393px)</span>
               </button>
               <button
                 id="btn-switch-tablet"
+                type="button"
                 onClick={() => setDeviceMode('tablet')}
-                className="px-2.5 py-1 text-xs rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1.5"
+                className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center gap-1 transition-colors"
+                title="Switch to Tablet Frame"
               >
                 <Tablet className="w-3.5 h-3.5 text-indigo-400" />
-                Tablet Mode
+                <span>Tablet (820px)</span>
               </button>
             </div>
           </div>
@@ -69,7 +86,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
     );
   }
 
-  // Calculate container dimensions
+  // Calculate container dimensions for simulated phone/tablet frame
   let frameWidth = 393;
   let frameHeight = 852;
 
@@ -85,50 +102,55 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-black text-white flex flex-col items-center justify-center p-3 select-none">
+    <div className="w-full h-full min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-black text-white flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-4 select-none">
       {/* Top Device Switcher Toolbar */}
-      <header className="mb-3 px-4 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 shadow-xl backdrop-blur-md flex items-center space-x-3 z-30">
-        <div className="flex items-center space-x-1 border-r border-zinc-700/60 pr-3">
+      <header className="mb-3 px-3 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-800 shadow-xl backdrop-blur-md flex items-center space-x-2 z-30 shrink-0">
+        <div className="flex items-center space-x-1 border-r border-zinc-700/60 pr-2">
+          <button
+            id="sim-full-btn"
+            type="button"
+            onClick={() => setDeviceMode('responsive')}
+            className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+            title="Expand to Full View"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span>Full Window</span>
+          </button>
+
           <button
             id="sim-phone-btn"
+            type="button"
             onClick={() => setDeviceMode('phone')}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
               deviceMode === 'phone'
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span>Mobile (393×852)</span>
+            <span>Mobile (393px)</span>
           </button>
 
           <button
             id="sim-tablet-btn"
+            type="button"
             onClick={() => setDeviceMode('tablet')}
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+            className={`flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium transition-all ${
               deviceMode === 'tablet'
                 ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
             }`}
           >
             <Tablet className="w-3.5 h-3.5" />
-            <span>Tablet (820×1080)</span>
-          </button>
-
-          <button
-            id="sim-full-btn"
-            onClick={() => setDeviceMode('responsive')}
-            className="flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>Full Window</span>
+            <span>Tablet (820px)</span>
           </button>
         </div>
 
         <button
           id="sim-orient-btn"
+          type="button"
           onClick={() => setOrientation((prev) => (prev === 'portrait' ? 'landscape' : 'portrait'))}
-          className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-all"
+          className="flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium text-zinc-300 hover:bg-zinc-800 transition-all"
           title="Rotate Device Orientation"
         >
           <RotateCcw className="w-3.5 h-3.5 text-zinc-400" />
@@ -138,7 +160,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
 
       {/* Simulated Device Frame */}
       <div
-        className={`relative transition-all duration-300 ease-out bg-black shadow-2xl overflow-hidden border-[10px] border-zinc-800/90 ring-1 ring-white/10 ${
+        className={`relative transition-all duration-300 ease-out bg-black shadow-2xl overflow-hidden border-[10px] border-zinc-800/90 ring-1 ring-white/10 shrink-0 ${
           deviceMode === 'phone'
             ? orientation === 'portrait'
               ? 'rounded-[48px]'
@@ -148,8 +170,8 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
         style={{
           width: `${frameWidth}px`,
           height: `${frameHeight}px`,
-          maxHeight: 'calc(100vh - 75px)',
-          maxWidth: 'calc(100vw - 32px)',
+          maxHeight: 'calc(100vh - 65px)',
+          maxWidth: 'calc(100vw - 24px)',
         }}
       >
         {/* Device Notch / Dynamic Island */}
@@ -174,7 +196,7 @@ export const DeviceSimulator: React.FC<DeviceSimulatorProps> = ({ children }) =>
         </div>
 
         {/* Inner App Container */}
-        <main className="absolute inset-0 top-10 bottom-5 overflow-hidden flex flex-col bg-zinc-950 text-white">
+        <main className="absolute inset-0 top-10 bottom-4 overflow-hidden flex flex-col bg-zinc-950 text-white">
           {children}
         </main>
 
